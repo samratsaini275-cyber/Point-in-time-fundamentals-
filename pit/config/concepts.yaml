@@ -1,0 +1,124 @@
+# Concept map — DATA, not logic.
+#
+# SYNONYM INVARIANT (enforced at build time, see pit/validate.py):
+#   An ordered tag list may contain ONLY true synonyms / sequential RENAMES of
+#   the SAME accounting line item. Order = preference: index 0 is most-preferred;
+#   tag_rank is used by the query only as the FINAL tie-break (after filing_date),
+#   which is sound exactly because the tags denote the same number. Tags that
+#   measure DIFFERENT things (e.g. cash vs cash-incl-restricted, current vs total
+#   accounts payable, balance-sheet-date vs cover-date share counts) MUST be
+#   separate canonical concepts. The build asserts that, within any single
+#   (accession, canonical_concept, period_start, period_end), every mapped tag
+#   present carries the SAME value; a disagreement is a hard error, never a
+#   silent tie-break.
+#
+# period_type:
+#   duration  -> flow concepts spanning [period_start, period_end].
+#   instant   -> point-in-time snapshots at period_end (period_start null).
+#
+# joinable_to_statements (default true):
+#   false marks a concept whose period_end is NOT a fiscal-statement date and so
+#   must never be silently joined to the financial statements (e.g. cover-page
+#   share counts). For such concepts periodicity is forced to NULL and
+#   fiscal_period is labelled COVER.
+#
+# taxonomy is per-tag because some concepts live in the SEC `dei` taxonomy.
+
+company:
+  name: Apple Inc.
+  cik: 320193            # zero-padded to 10 digits in URLs by the ingester
+
+concepts:
+
+  revenue:
+    period_type: duration
+    label: Total net revenue / sales
+    # Legitimate sequential renames of the SAME top-line item across taxonomy
+    # versions — a true synonym list.
+    tags:
+      - {taxonomy: us-gaap, tag: RevenueFromContractWithCustomerExcludingAssessedTax}
+      - {taxonomy: us-gaap, tag: SalesRevenueNet}
+      - {taxonomy: us-gaap, tag: Revenues}
+
+  cost_of_revenue:
+    period_type: duration
+    label: Cost of sales / cost of goods and services sold
+    tags:
+      - {taxonomy: us-gaap, tag: CostOfGoodsAndServicesSold}
+
+  gross_profit:
+    period_type: duration
+    label: Gross profit (gross margin)
+    tags:
+      - {taxonomy: us-gaap, tag: GrossProfit}
+
+  net_income:
+    period_type: duration
+    label: Net income (loss)
+    tags:
+      - {taxonomy: us-gaap, tag: NetIncomeLoss}
+
+  operating_cash_flow:
+    period_type: duration
+    label: Net cash provided by operating activities
+    tags:
+      - {taxonomy: us-gaap, tag: NetCashProvidedByUsedInOperatingActivities}
+
+  total_assets:
+    period_type: instant
+    label: Total assets
+    tags:
+      - {taxonomy: us-gaap, tag: Assets}
+
+  total_liabilities:
+    period_type: instant
+    label: Total liabilities
+    tags:
+      - {taxonomy: us-gaap, tag: Liabilities}
+
+  total_equity:
+    period_type: instant
+    label: Total stockholders' equity
+    tags:
+      - {taxonomy: us-gaap, tag: StockholdersEquity}
+
+  # --- cash: two DISTINCT concepts (were wrongly conflated) ----------------
+  cash_and_equivalents:
+    period_type: instant
+    label: Cash and cash equivalents (balance-sheet line, excludes restricted)
+    tags:
+      - {taxonomy: us-gaap, tag: CashAndCashEquivalentsAtCarryingValue}
+
+  cash_incl_restricted:
+    period_type: instant
+    label: Cash, cash equivalents and restricted cash (cash-flow total)
+    tags:
+      - {taxonomy: us-gaap, tag: CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents}
+
+  # --- accounts payable: current vs total are DIFFERENT concepts -----------
+  accounts_payable:
+    period_type: instant
+    label: Accounts payable, current
+    tags:
+      - {taxonomy: us-gaap, tag: AccountsPayableCurrent}
+
+  accounts_payable_total:
+    period_type: instant
+    label: Accounts payable, total (sparse for Apple — 2 rows from a 2009 10-Q)
+    tags:
+      - {taxonomy: us-gaap, tag: AccountsPayable}
+
+  # --- shares outstanding: two measurement-date conventions ----------------
+  shares_outstanding:
+    period_type: instant
+    label: Common shares outstanding at the balance-sheet date (joinable)
+    joinable_to_statements: true
+    tags:
+      - {taxonomy: us-gaap, tag: CommonStockSharesOutstanding}
+
+  shares_outstanding_cover:
+    period_type: instant
+    label: Common shares outstanding at the 10-K/10-Q cover date (NOT joinable)
+    joinable_to_statements: false   # cover date is not a fiscal period end
+    tags:
+      - {taxonomy: dei, tag: EntityCommonStockSharesOutstanding}
