@@ -24,6 +24,11 @@
 #
 # taxonomy is per-tag because some concepts live in the SEC `dei` taxonomy.
 
+# NOTE: `company:` below documents the original single-company vertical slice
+# (Apple). The pipeline (ingest/normalize/store/query) is CIK-agnostic and this
+# concept map is shared across companies — pit-kronos-alpha builds a separate
+# DuckDB store per CIK (AAPL, MSFT, GOOGL as of this revision; see that repo's
+# fundamentals_bridge.py) reusing the same concepts.yaml.
 company:
   name: Apple Inc.
   cik: 320193            # zero-padded to 10 digits in URLs by the ingester
@@ -122,3 +127,98 @@ concepts:
     joinable_to_statements: false   # cover date is not a fiscal period end
     tags:
       - {taxonomy: dei, tag: EntityCommonStockSharesOutstanding}
+
+  # --- added for unlevered-FCF / simplified DCF valuation -------------------
+  # Verified against actual companyfacts tag usage for AAPL (CIK 320193),
+  # MSFT (CIK 789019) and GOOGL (CIK 1652044) before being added — see
+  # pit-kronos-alpha's docs/decisions/ for the verification notes. Any tag
+  # list below with 2+ entries is only combined here because those specific
+  # tags were confirmed (via the synonym invariant, empirically, at build
+  # time) to agree in filings where more than one appears.
+
+  depreciation_and_amortization:
+    period_type: duration
+    label: Depreciation and amortization, combined (cash-flow-statement non-cash addback)
+    # DepreciationAmortizationAndAccretionNet was tested against these two and
+    # empirically DISAGREES for AAPL (consistently the larger number — appears
+    # to include accretion/other non-D&A items) -> kept as its own separate
+    # concept below rather than conflated here.
+    tags:
+      - {taxonomy: us-gaap, tag: DepreciationDepletionAndAmortization}
+      - {taxonomy: us-gaap, tag: DepreciationAndAmortization}
+
+  depreciation_amortization_and_accretion:
+    period_type: duration
+    label: >-
+      Depreciation, amortization and accretion, net (broader than
+      depreciation_and_amortization — includes accretion/other items not
+      present in the DepreciationAndAmortization/DepreciationDepletionAnd
+      Amortization tags; confirmed to disagree with those for AAPL).
+    tags:
+      - {taxonomy: us-gaap, tag: DepreciationAmortizationAndAccretionNet}
+
+  depreciation:
+    period_type: duration
+    label: >-
+      Depreciation only (bare 'Depreciation' tag). Distinct concept from
+      depreciation_and_amortization — for some filers this tag is their sole
+      D&A line (amortization not separately material/broken out), for others
+      it genuinely excludes amortization. Treated as an approximate fallback
+      in valuation code when depreciation_and_amortization is unavailable,
+      never silently merged with it here.
+    tags:
+      - {taxonomy: us-gaap, tag: Depreciation}
+
+  capital_expenditures:
+    period_type: duration
+    label: Payments to acquire property, plant and equipment (core capex)
+    tags:
+      - {taxonomy: us-gaap, tag: PaymentsToAcquirePropertyPlantAndEquipment}
+
+  interest_expense:
+    period_type: duration
+    label: >-
+      Interest expense (broadest available tag). Confirmed to disagree with
+      InterestExpenseDebt for AAPL (consistently the larger number — appears
+      to include non-debt interest, e.g. finance leases); kept as its own
+      concept below rather than conflated here.
+    tags:
+      - {taxonomy: us-gaap, tag: InterestExpense}
+
+  interest_expense_debt:
+    period_type: duration
+    label: Interest expense on debt specifically (narrower than interest_expense)
+    tags:
+      - {taxonomy: us-gaap, tag: InterestExpenseDebt}
+
+  pretax_income:
+    period_type: duration
+    label: Income before income taxes (continuing operations)
+    tags:
+      - {taxonomy: us-gaap, tag: IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest}
+      - {taxonomy: us-gaap, tag: IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments}
+
+  income_tax_expense:
+    period_type: duration
+    label: Income tax expense (benefit)
+    tags:
+      - {taxonomy: us-gaap, tag: IncomeTaxExpenseBenefit}
+
+  # --- debt: current / noncurrent / commercial paper are DISTINCT concepts --
+  long_term_debt_noncurrent:
+    period_type: instant
+    label: Long-term debt, noncurrent portion
+    tags:
+      - {taxonomy: us-gaap, tag: LongTermDebtNoncurrent}
+
+  long_term_debt_current:
+    period_type: instant
+    label: Long-term debt, current portion (due within one year)
+    tags:
+      - {taxonomy: us-gaap, tag: LongTermDebtCurrent}
+
+  commercial_paper:
+    period_type: instant
+    label: Commercial paper outstanding (short-term borrowing)
+    tags:
+      - {taxonomy: us-gaap, tag: CommercialPaper}
